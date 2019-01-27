@@ -1,16 +1,15 @@
 package com.tanguyantoine.react;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.res.Resources;
-import android.os.Build;
+import android.os.Binder;
 import android.os.IBinder;
 import android.support.v4.app.NotificationManagerCompat;
+import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v4.app.NotificationCompat;
 import android.view.KeyEvent;
@@ -18,10 +17,6 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
 
 import java.util.Map;
-
-import static android.support.v4.app.NotificationCompat.PRIORITY_MIN;
-import static com.tanguyantoine.react.MusicControlModule.CHANNEL_ID;
-import static com.tanguyantoine.react.MusicControlModule.NOTIFICATION_ID;
 
 public class MusicControlNotification {
 
@@ -80,16 +75,48 @@ public class MusicControlNotification {
         }
     }
 
-    public Notification prepareNotification(NotificationCompat.Builder builder, boolean isPlaying) {
+    public synchronized void show(NotificationCompat.Builder builder, MediaSessionCompat session, boolean isPlaying) {
         // Add the buttons
-        builder.mActions.clear();
-        if(previous != null) builder.addAction(previous);
-        if(skipBackward != null) builder.addAction(skipBackward);
-        if(play != null && !isPlaying) builder.addAction(play);
-        if(pause != null && isPlaying) builder.addAction(pause);
-        if(stop != null) builder.addAction(stop);
-        if(next != null) builder.addAction(next);
-        if(skipForward != null) builder.addAction(skipForward);
+        try {
+            builder.mActions.clear();
+        }
+        catch (Exception e) {
+            //
+        }
+        int actionCounter = 0;
+        int actionPlayPauseIndex = -1;
+        int actionNextIndex = -1;
+        if(previous != null) {
+            builder.addAction(previous);
+            actionCounter++;
+        }
+        if(skipBackward != null) {
+            builder.addAction(skipBackward);
+            actionCounter++;
+        }
+        if(play != null && !isPlaying) {
+            actionPlayPauseIndex = actionCounter;
+            builder.addAction(play);
+            actionCounter++;
+        }
+        if(pause != null && isPlaying) {
+            actionPlayPauseIndex = actionCounter;
+            builder.addAction(pause);
+            actionCounter++;
+        }
+        if(stop != null) {
+            builder.addAction(stop);
+            actionCounter++;
+        }
+        if(next != null) {
+            actionNextIndex = actionCounter;
+            builder.addAction(next);
+            actionCounter++;
+        }
+        if(skipForward != null) {
+            builder.addAction(skipForward);
+            actionCounter++;
+        }
 
         // Set whether notification can be closed based on closeNotification control (default PAUSED)
         if(module.notificationClose == MusicControlModule.NotificationClose.ALWAYS) {
@@ -111,23 +138,41 @@ public class MusicControlNotification {
         Intent remove = new Intent(REMOVE_NOTIFICATION);
         remove.putExtra(PACKAGE_NAME, context.getApplicationInfo().packageName);
         builder.setDeleteIntent(PendingIntent.getBroadcast(context, 0, remove, PendingIntent.FLAG_UPDATE_CURRENT));
+        try {
+            //set media style
+            android.support.v4.media.app.NotificationCompat.MediaStyle mediaStyle = new android.support.v4.media.app.NotificationCompat.MediaStyle();
+            if(actionPlayPauseIndex>=0 && actionNextIndex>=0) {
+                mediaStyle.setShowActionsInCompactView(actionPlayPauseIndex, actionNextIndex);
+            }
+            else if(actionPlayPauseIndex>=0) {
+                mediaStyle.setShowActionsInCompactView(actionPlayPauseIndex);
+            }
+            if(session!=null) {
+                builder.setStyle(mediaStyle.setMediaSession(session.getSessionToken()));
+            }
+        }
+        catch (Exception e) {
+            //
+        }
 
-        return builder.build();
-    }
-
-    public synchronized void show(NotificationCompat.Builder builder, boolean isPlaying) {
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, prepareNotification(builder, isPlaying));
+        // Finally show/update the notification
+        try {
+            module.mServiceConnection.getService().startForeground(100, builder.build());
+        }
+        catch (Exception e) {
+            //
+        }
+        //NotificationManagerCompat.from(context).notify("MusicControl", 0, builder.build());
     }
 
     public void hide() {
-        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID);
-
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
-
-            Intent myIntent = new Intent(context, MusicControlNotification.NotificationService.class);
-            context.stopService(myIntent);
-
+        try {
+            module.mServiceConnection.getService().stopForeground(true);
         }
+        catch (Exception e) {
+            //
+        }
+        //NotificationManagerCompat.from(context).cancel("MusicControl", 0);
     }
 
     /**
@@ -175,20 +220,27 @@ public class MusicControlNotification {
     }
 
     public static class NotificationService extends Service {
+        public class Binder extends android.os.Binder {
+            public NotificationService getService() {
+                return NotificationService.this;
+            }
+        }
+
+        private Binder mBinder;
 
         @Override
         public IBinder onBind(Intent intent) {
-            return null;
+            if(mBinder==null) {
+                mBinder = new Binder();
+            }
+            return mBinder;
         }
 
         @Override
-        public void onCreate() {
-            super.onCreate();
-
-            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification notification = MusicControlModule.INSTANCE.notification.prepareNotification(MusicControlModule.INSTANCE.nb,false);
-                startForeground(NOTIFICATION_ID, notification);
-            }
+        public boolean onUnbind(Intent intent) {
+            mBinder = null;
+            stopForeground(true);
+            return false;
         }
 
         @Override
@@ -202,12 +254,40 @@ public class MusicControlNotification {
             if(MusicControlModule.INSTANCE != null) {
                 MusicControlModule.INSTANCE.destroy();
             }
-            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                stopForeground(true);
-            }
+            mBinder = null;
+            stopForeground(true);
             stopSelf(); // Stop the service as we won't need it anymore
         }
 
+    }
+
+    public static class NotificationServiceConnection implements ServiceConnection {
+        private MusicControlNotification.NotificationService mService;
+
+        public NotificationService getService() {
+            return mService;
+        }
+
+        public boolean isConnected() {
+            return mService!=null;
+        }
+
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            if(service instanceof MusicControlNotification.NotificationService.Binder) {
+                mService = ((MusicControlNotification.NotificationService.Binder) service).getService();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            mService = null;
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            mService = null;
+        }
     }
 
 }
