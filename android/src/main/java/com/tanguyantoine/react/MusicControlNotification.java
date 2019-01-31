@@ -12,6 +12,7 @@ import android.support.v4.app.NotificationManagerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v4.app.NotificationCompat;
+import android.util.Log;
 import android.view.KeyEvent;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
@@ -158,6 +159,9 @@ public class MusicControlNotification {
         // Finally show/update the notification
         try {
             module.mServiceConnection.getService().startForeground(100, builder.build());
+            if(module.notificationClose == MusicControlModule.NotificationClose.ALWAYS || !isPlaying) {
+                module.mServiceConnection.getService().stopForeground(false);
+            }
         }
         catch (Exception e) {
             //
@@ -217,77 +221,6 @@ public class MusicControlNotification {
         PendingIntent i = PendingIntent.getBroadcast(context, keyCode, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
         return new NotificationCompat.Action(icon, title, i);
-    }
-
-    public static class NotificationService extends Service {
-        public class Binder extends android.os.Binder {
-            public NotificationService getService() {
-                return NotificationService.this;
-            }
-        }
-
-        private Binder mBinder;
-
-        @Override
-        public IBinder onBind(Intent intent) {
-            if(mBinder==null) {
-                mBinder = new Binder();
-            }
-            return mBinder;
-        }
-
-        @Override
-        public boolean onUnbind(Intent intent) {
-            mBinder = null;
-            stopForeground(true);
-            return false;
-        }
-
-        @Override
-        public int onStartCommand(Intent intent, int flags, int startId) {
-            return START_NOT_STICKY;
-        }
-
-        @Override
-        public void onTaskRemoved(Intent rootIntent) {
-            // Destroy the notification and sessions when the task is removed (closed, killed, etc)
-            if(MusicControlModule.INSTANCE != null) {
-                MusicControlModule.INSTANCE.destroy();
-            }
-            mBinder = null;
-            stopForeground(true);
-            stopSelf(); // Stop the service as we won't need it anymore
-        }
-
-    }
-
-    public static class NotificationServiceConnection implements ServiceConnection {
-        private MusicControlNotification.NotificationService mService;
-
-        public NotificationService getService() {
-            return mService;
-        }
-
-        public boolean isConnected() {
-            return mService!=null;
-        }
-
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            if(service instanceof MusicControlNotification.NotificationService.Binder) {
-                mService = ((MusicControlNotification.NotificationService.Binder) service).getService();
-            }
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            mService = null;
-        }
-
-        @Override
-        public void onBindingDied(ComponentName name) {
-            mService = null;
-        }
     }
 
 }

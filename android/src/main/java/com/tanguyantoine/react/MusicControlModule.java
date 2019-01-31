@@ -27,10 +27,15 @@ import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.media.app.NotificationCompat.MediaStyle;
 import android.util.Log;
+
+import com.facebook.react.bridge.Dynamic;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableMapKeySetIterator;
+import com.facebook.react.bridge.ReadableNativeMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.views.imagehelper.ResourceDrawableIdHelper;
 import java.io.IOException;
@@ -42,9 +47,20 @@ import java.util.Map;
 
 public class MusicControlModule extends ReactContextBaseJavaModule implements ComponentCallbacks2 {
 
+    public static void releaseInstance() {
+        try {
+            if(MusicControlModule.INSTANCE != null) {
+                MusicControlModule.INSTANCE.destroy();
+            }
+        }
+        catch (Exception e) {
+            //
+        }
+    }
+
     static MusicControlModule INSTANCE;
 
-    MusicControlNotification.NotificationServiceConnection mServiceConnection = new MusicControlNotification.NotificationServiceConnection();
+    MusicControlService.Connection mServiceConnection = new MusicControlService.Connection();
 
     private boolean init = false;
     protected MediaSessionCompat session;
@@ -152,7 +168,9 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         context.registerReceiver(receiver, filter);
 
         //bind service
-        context.bindService(new Intent(context, MusicControlNotification.NotificationService.class), mServiceConnection, Context.BIND_AUTO_CREATE);
+        context.bindService(new Intent(context, MusicControlService.class), mServiceConnection, Context.BIND_AUTO_CREATE);
+        //ContextCompat.startForegroundService(getReactApplicationContext(), new Intent(context, MusicControlService.class));
+        //context.startService(new Intent(context, MusicControlService.class));
 
         context.registerComponentCallbacks(this);
 
@@ -171,10 +189,16 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
 
         ReactApplicationContext context = getReactApplicationContext();
 
-        context.unregisterReceiver(receiver);
-        context.unregisterComponentCallbacks(this);
+        try {
+            context.unregisterReceiver(receiver);
+            context.unregisterComponentCallbacks(this);
 
-        context.unbindService(mServiceConnection);
+            context.unbindService(mServiceConnection);
+            //context.stopService(new Intent(context, MusicControlService.class));
+        }
+        catch (Exception e) {
+            //
+        }
 
         if (artworkThread != null && artworkThread.isAlive())
             artworkThread.interrupt();
@@ -190,12 +214,6 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         nb = null;
 
         init = false;
-    }
-
-    @Override
-    protected void finalize() throws Throwable {
-        destroy();
-        super.finalize();
     }
 
     synchronized public void destroy() {
@@ -481,7 +499,7 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL:
 
                 Log.w("MusicControl", "Control resources are being removed due to system's low memory (Level: " + level + ")");
-                destroy();
+                //destroy();
                 break;
         }
     }
@@ -494,7 +512,7 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
     @Override
     public void onLowMemory() {
         Log.w("MusicControl", "Control resources are being removed due to system's low memory (Level: MEMORY_COMPLETE)");
-        destroy();
+        //destroy();
     }
 
     public enum NotificationClose {
