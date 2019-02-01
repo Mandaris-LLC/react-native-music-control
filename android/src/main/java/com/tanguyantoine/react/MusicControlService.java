@@ -18,7 +18,7 @@ public class MusicControlService extends Service {
 
     @Override
     public IBinder onBind(Intent intent) {
-        Log.e("TEST", "onBind");
+        //Log.e("TEST", "onBind");
         if(mBinder==null) {
             mBinder = new Binder();
         }
@@ -27,27 +27,27 @@ public class MusicControlService extends Service {
 
     @Override
     public boolean onUnbind(Intent intent) {
-        Log.e("TEST", "onUnbind");
+        //Log.e("TEST", "onUnbind");
         shutdown();
         return false;
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.e("TEST", "onStartCommand");
+        //Log.e("TEST", "onStartCommand");
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        Log.e("TEST", "onDestroy");
+        //Log.e("TEST", "onDestroy");
         stopForeground(true);
         super.onDestroy();
     }
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.e("TEST", "onTaskRemoved");
+        //Log.e("TEST", "onTaskRemoved");
         shutdown();
     }
 
