@@ -64,7 +64,7 @@ const MusicControl = {
       listenerOfNativeMusicControl = (IS_ANDROID
         ? DeviceEventEmitter
         : new NativeEventEmitter(NativeMusicControl)
-      ).addListener('RNMusicControlEvent', event => {
+      ).addListener('RNMusicControlEvent', (event: any) => {
         MusicControl.handleCommand(event.name, event.value)
       })
     }
