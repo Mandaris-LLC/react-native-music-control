@@ -26,6 +26,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.media.app.NotificationCompat.MediaStyle;
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.facebook.react.bridge.Dynamic;
@@ -231,7 +232,7 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         if(artworkThread != null && artworkThread.isAlive()) artworkThread.interrupt();
 
         String title = metadata.hasKey("title") ? metadata.getString("title") : null;
-        String artist = metadata.hasKey("artist") ? metadata.getString("artist") : null;
+        final String artist = metadata.hasKey("artist") ? metadata.getString("artist") : null;
         String album = metadata.hasKey("album") ? metadata.getString("album") : null;
         String genre = metadata.hasKey("genre") ? metadata.getString("genre") : null;
         String description = metadata.hasKey("description") ? metadata.getString("description") : null;
@@ -278,21 +279,34 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         if(metadata.hasKey("artwork")) {
             String artwork = null;
             boolean localArtwork = false;
+            boolean resourceArtwork = false;
 
             if(metadata.getType("artwork") == ReadableType.Map) {
-                artwork = metadata.getMap("artwork").getString("uri");
-                localArtwork = true;
+                ReadableMap map = metadata.getMap("artwork");
+                if(map!=null) {
+                    if(map.hasKey("uri")) {
+                        artwork = map.getString("uri");
+                    }
+                    else if(map.hasKey("res")) {
+                        artwork = metadata.getMap("artwork").getString("res");
+                        resourceArtwork = true;
+                    }
+                    localArtwork = true;
+                }
             } else {
                 artwork = metadata.getString("artwork");
             }
 
             final String artworkUrl = artwork;
             final boolean artworkLocal = localArtwork;
+            final boolean artworkResource = resourceArtwork;
+
+            //Log.e("TEST", "artwork: "+artworkUrl+" local "+artworkLocal+" resource "+resourceArtwork);
 
             artworkThread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    Bitmap bitmap = loadArtwork(artworkUrl, artworkLocal);
+                    Bitmap bitmap = artworkResource ? loadArtworkResource(artworkUrl) : loadArtwork(artworkUrl, artworkLocal);
 
                     if(md != null) {
                         md.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, bitmap);
@@ -452,6 +466,22 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         session.setPlaybackState(state);
     }
 
+    private Bitmap loadArtworkResource(String name) {
+        Bitmap bitmap = null;
+
+        try {
+            Resources r = getCurrentActivity().getResources();
+            String packageName = getCurrentActivity().getPackageName();
+
+            int resId = r.getIdentifier(name, "drawable", packageName);
+            bitmap = BitmapFactory.decodeResource(r, resId);
+        }
+        catch (Exception e) {
+            //
+        }
+
+        return bitmap;
+    }
     private Bitmap loadArtwork(String url, boolean local) {
         Bitmap bitmap = null;
 
